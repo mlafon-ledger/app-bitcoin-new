@@ -5,6 +5,7 @@ on:
     branches:
       - master
       - develop
+      - custom-bitcoin-core
     paths:
       - .github/workflows/builder-image-workflow.yml
       - .github/workflows/Dockerfile
@@ -24,7 +25,7 @@ jobs:
       uses: docker/build-push-action@v1
       with:
         dockerfile: .github/workflows/Dockerfile
-        repository: ledgerhq/app-bitcoin-new/speculos-bitcoin
+        repository: ledgerhq/app-bitcoin-new/speculos-bitcoin-custom
         registry: ghcr.io
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
