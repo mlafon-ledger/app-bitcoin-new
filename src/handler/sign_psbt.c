@@ -55,6 +55,7 @@ extern global_context_t *G_coin_config;
 // Input validation
 static void process_input_map(dispatcher_context_t *dc);
 static void check_input_owned(dispatcher_context_t *dc);
+static void check_sighash(dispatcher_context_t *dc);
 
 static void alert_external_inputs(dispatcher_context_t *dc);
 static void alert_missing_nonwitnessutxo(dispatcher_context_t *dc);
@@ -666,6 +667,61 @@ static void process_input_map(dispatcher_context_t *dc) {
         }
     }
 
+    dc->next(check_sighash);
+}
+
+static void check_sighash(dispatcher_context_t *dc) {
+    sign_psbt_state_t *state = (sign_psbt_state_t *) &G_command_state;
+
+    if (!state->cur.input.has_sighash_type) {
+        dc->next(check_input_owned);
+        return;
+    }
+
+    // get the sighash_type
+    if (4 != call_get_merkleized_map_value_u32_le(dc,
+                                                  &state->cur.in_out.map,
+                                                  (uint8_t[]){PSBT_IN_SIGHASH_TYPE},
+                                                  1,
+                                                  &state->cur.input.sighash_type)) {
+        PRINTF("Malformed PSBT_IN_SIGHASH_TYPE for input %d\n", state->cur_input_index);
+
+        SEND_SW(dc, SW_INCORRECT_DATA);
+        return;
+    }
+
+    switch (state->cur.input.sighash_type) {
+        case SIGHASH_DEFAULT:
+            // Fallthrough
+        case SIGHASH_ALL:
+            break;
+
+        case (SIGHASH_ALL | SIGHASH_ANYONECANPAY):
+            // Fallthrough
+        case SIGHASH_NONE:
+            // Fallthrough
+        case (SIGHASH_NONE | SIGHASH_ANYONECANPAY):
+            PRINTF("Sighash type is non-default, will show a warning.\n");
+            state->show_nondefault_sighash_warning = true;
+            break;
+
+        case SIGHASH_SINGLE:
+        case (SIGHASH_SINGLE | SIGHASH_ANYONECANPAY):
+            if (state->cur_input_index >= state->n_outputs) {
+                PRINTF("SIGHASH_SINGLE with input idx >= n_output is not allowed \n");
+                SEND_SW(dc, SW_NOT_SUPPORTED);
+                return;
+            }
+            PRINTF("Sighash type is non-default, will show a warning.\n");
+            state->show_nondefault_sighash_warning = true;
+            break;
+
+        default:
+            PRINTF("Unsupported SIGHASH_TYPE: %d\n", state->cur.input.sighash_type);
+            SEND_SW(dc, SW_NOT_SUPPORTED);
+            return;
+    }
+
     dc->next(check_input_owned);
 }
 
@@ -1172,14 +1228,6 @@ static void sign_process_input_map(dispatcher_context_t *dc) {
             SEND_SW(dc, SW_INCORRECT_DATA);
             return;
         }
-    }
-
-    // TODO: add support for other sighash flags
-    if ((state->cur.input.sighash_type != SIGHASH_ALL) &&
-        (state->cur.input.sighash_type != SIGHASH_DEFAULT)) {
-        PRINTF("Only SIGHASH_ALL or SIGHASH_DEFAULT is currently supported\n");
-        SEND_SW(dc, SW_NOT_SUPPORTED);
-        return;
     }
 
     // get path, obtain change and address_index
