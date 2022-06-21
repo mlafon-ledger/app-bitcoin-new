@@ -58,6 +58,7 @@ static void check_input_owned(dispatcher_context_t *dc);
 
 static void alert_external_inputs(dispatcher_context_t *dc);
 static void alert_missing_nonwitnessutxo(dispatcher_context_t *dc);
+static void alert_nondefault_sighash(dispatcher_context_t *dc);
 
 // Output validation
 static void verify_outputs_init(dispatcher_context_t *dc);
@@ -755,7 +756,20 @@ static void alert_missing_nonwitnessutxo(dispatcher_context_t *dc) {
     LOG_PROCESSOR(dc, __FILE__, __LINE__, __func__);
 
     if (state->show_missing_nonwitnessutxo_warning) {
-        ui_warn_unverified_segwit_inputs(dc, verify_outputs_init);
+        ui_warn_unverified_segwit_inputs(dc, alert_nondefault_sighash);
+    } else {
+        dc->next(alert_nondefault_sighash);
+    }
+}
+
+// If any input has non-default sighash, we warn the user
+static void alert_nondefault_sighash(dispatcher_context_t *dc) {
+    sign_psbt_state_t *state = (sign_psbt_state_t *) &G_command_state;
+
+    LOG_PROCESSOR(dc, __FILE__, __LINE__, __func__);
+
+    if (state->show_nondefault_sighash_warning) {
+        ui_warn_nondefault_sighash(dc, verify_outputs_init);
     } else {
         dc->next(verify_outputs_init);
     }
